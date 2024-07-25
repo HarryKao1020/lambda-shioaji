@@ -1,3 +1,7 @@
 boto3
 flask
-shioaji
+shioaji[speed]
+matplotlib
+numpy
+pandas
+datetime
