@@ -90,7 +90,7 @@ def calculate_moving_averages(event, stock_code, window=60, buy_price=None):
         ]
     ].dropna()
 
-
+#//// 計算ma跟買價的假差
 def get_current_ma_diff(event, stock_code, buy_price=None):
     ma_data = calculate_moving_averages(event, stock_code, buy_price=buy_price)
     current_5ma_diff = ma_data["5MA_diff"].iloc[-1]
@@ -107,3 +107,87 @@ def get_current_ma_diff(event, stock_code, buy_price=None):
         "20ma_60ma_diff": current_2060_diff,
     }
     return json.dumps(result)
+
+
+#///// 取加權指數&櫃買指數的MACD方向
+def get_macd(event):
+    start_day = date.today() - timedelta(days=365)
+    end_day = date.today()
+    api_key = event["apiKey"]
+    secret_key = event["secretKey"]
+    api = sj.Shioaji(simulation=True)
+    accounts = api.login(api_key, secret_key)
+    tse_index= api.Contracts.Indexs.TSE["001"]
+    otc_index = api.Contracts.Indexs.OTC["101"]
+
+    # 取得加權指數資料
+    tse_kbars = api.kbars(
+        contract=tse_index,
+        start=str(start_day),
+        end=str(end_day)
+    )
+    # 取得櫃買指數資料
+    otc_kbars = api.kbars(
+        contract=otc_index,
+        start=str(start_day),
+        end=str(end_day)
+    )
+
+
+
+    tse_df = pd.DataFrame({**tse_kbars})
+    tse_df.ts = pd.to_datetime(tse_df.ts)
+    tse_df.set_index('ts',inplace=True)
+    otc_df = pd.DataFrame({**otc_kbars})
+    otc_df.ts = pd.to_datetime(otc_df.ts)
+    otc_df.set_index('ts',inplace=True)
+
+    # 日k13:30的K棒
+    tse_daily_df = tse_df.resample('D').last().dropna()
+    otc_daily_df = otc_df.resample('D').last().dropna()
+
+    tse_macd_df = get_macd(tse_daily_df)
+    otc_macd_df = get_macd(otc_daily_df)
+
+    tse_response_msg = macd_notify(tse_macd_df)
+    otc_response_msg= macd_notify(otc_macd_df)
+
+    return {"TSE_MACD":tse_response_msg,"OTC_MACD":otc_response_msg}
+
+
+
+# 取得macd的DataFrame
+def getMacd(df):
+    macd, signal, hist = abstract.MACD(df['Close'].values, fastperiod=12, slowperiod=26, signalperiod=9)
+    # Create a dictionary with the calculated values
+    macd_data = {
+        'MACD': macd,
+        'Signal': signal,
+        'Histogram': hist
+    }
+    # Convert the dictionary to a pandas DataFrame
+    macd_df = pd.DataFrame(macd_data, index=tse_daily_df.index).dropna()
+    return macd_df
+
+
+# 判斷MACD的趨勢
+def macd_notify(df):
+    today_hist = df.iloc[-1];
+    yesterday_hist = df.iloc[-2];
+
+
+    if today_hist > 0:
+        if today_hist > yesterday_hist:
+            response_message = "紅柱增長,可以積極做多\n"
+            response_message += "找到主流族群中最好的,打好打滿"
+        else:
+            response_message = "紅柱縮短,降低槓桿跟部位,不再買入,庫存留倉觀察"
+    else:
+        if today_hist < yesterday_hist:
+            response_message = "綠柱增長,不要看盤了,買了錢會賠光光!會賠光!會很痛苦\n"
+            response_message += "禁止買入任何部位,也嚴禁抄底"
+        else:
+            response_message = "綠柱縮短,可以嘗試做多強勢族群,不上槓桿,嚴守停損\n"
+            response_message += "記住這是搶反彈,停損一定要守在成本!"
+    
+    return response_message
