@@ -38,11 +38,30 @@ def lambda_handler(event, context):
             ),
         }
     elif action == "get_macd_info":
-        macd_info = get_macd(event)
+        macd_info = get_index_macd(event)
         return {
             "statusCode": 200,
             "body": json.dumps(
                 {"account_id": accounts[0].account_id, "responseData": macd_info}
+            ),
+        }
+    elif action == "get_stock_macd":
+        stock_code = event["stockCode"]
+        stock_macd = get_stock_macd(event, stock_code)
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                {"account_id": accounts[0].account_id, "responseData": stock_macd}
+            ),
+        }
+    else:
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                {
+                    "account_id": accounts[0].account_id,
+                    "responseData": "Get Shioaji API Error Occur !",
+                }
             ),
         }
 
@@ -119,7 +138,7 @@ def get_current_ma_diff(event, stock_code, buy_price=None):
 
 
 # ////////// 取加權指數&櫃買指數的MACD方向
-def get_macd(event):
+def get_index_macd(event):
     start_day = date.today() - timedelta(days=365)
     end_day = date.today()
     api_key = event["apiKey"]
@@ -148,11 +167,36 @@ def get_macd(event):
     tse_macd_df = calculate_macd(tse_daily_df)
     otc_macd_df = calculate_macd(otc_daily_df)
 
-    tse_response_msg = macd_notify(tse_macd_df["Hist"])
-    otc_response_msg = macd_notify(otc_macd_df["Hist"])
-    print("tse_response_msg:", tse_response_msg)
+    tse_response_msg = index_macd_notify(tse_macd_df["Hist"])
+    otc_response_msg = index_macd_notify(otc_macd_df["Hist"])
 
-    return {"TSE_MACD": tse_response_msg, "OTC_MACD": otc_response_msg}
+    result = {"TSE_MACD": tse_response_msg, "OTC_MACD": otc_response_msg}
+    return json.dumps(result)
+
+
+# 取個股macd方向
+def get_stock_macd(event, stock_code):
+    start_day = date.today() - timedelta(days=365)
+    end_day = date.today()
+    api_key = event["apiKey"]
+    secret_key = event["secretKey"]
+    api = sj.Shioaji(simulation=True)
+    accounts = api.login(api_key, secret_key)
+    kbars = api.kbars(
+        contract=api.Contracts.Stocks[stock_code],
+        start=str(start_day),
+        end=str(end_day),
+    )
+    df = pd.DataFrame({**kbars})
+    df.ts = pd.to_datetime(df.ts)
+    df.set_index("ts", inplace=True)
+
+    # 日k13:30的K棒
+    df = df.resample("D").last().dropna()
+    stock_macd_df = calculate_macd(df)
+    stock_macd_message = stock_macd_notify(stock_macd_df["Hist"])
+    result = {"STOCK_MACD": stock_macd_message}
+    return json.dumps(result)
 
 
 # 計算 EMA
@@ -171,22 +215,42 @@ def calculate_macd(df, short_span=12, long_span=26, signal_span=9):
 
 
 # 判斷MACD的趨勢
-def macd_notify(df):
+def index_macd_notify(df):
     today_hist = df.iloc[-1]
     yesterday_hist = df.iloc[-2]
     if today_hist > 0:
         if today_hist > yesterday_hist:
-            response_message = "紅柱增長,可以積極做多\n"
+            response_message = "『紅柱增長』\n 可以積極做多\n"
+
             response_message += "找到主流族群中最好的,打好打滿"
         else:
-            response_message = "紅柱縮短,降低槓桿跟部位,不再買入,庫存留倉觀察"
+            response_message = "『紅柱縮短』\n 降低槓桿跟部位,不再買入,庫存留倉觀察"
     else:
         if today_hist < yesterday_hist:
-            response_message = "綠柱增長,不要看盤了,買了錢會賠光光!會賠光!會很痛苦\n"
+            response_message = (
+                "『綠柱增長』\n 不要看盤了,買了錢會賠光光!會賠光!會很痛苦\n"
+            )
             response_message += "禁止買入任何部位,也嚴禁抄底"
         else:
-            response_message = "綠柱縮短,可以嘗試做多強勢族群,不上槓桿,嚴守停損\n"
+            response_message = "『綠柱縮短』\n 可以嘗試做多強勢族群,不上槓桿,嚴守停損\n"
             response_message += "記住這是搶反彈,停損一定要守在成本!"
+
+    return response_message
+
+
+def stock_macd_notify(df):
+    today_hist = df.iloc[-1]
+    yesterday_hist = df.iloc[-2]
+    if today_hist > 0:
+        if today_hist > yesterday_hist:
+            response_message = "『紅柱增長』,續抱"
+        else:
+            response_message = "『紅柱縮短』,停利降低部位"
+    else:
+        if today_hist < yesterday_hist:
+            response_message = "『綠柱增長』,不要買進"
+        else:
+            response_message = "『綠柱縮短』,嘗試抄底建倉\n 小量進場試單"
 
     return response_message
 
