@@ -38,7 +38,7 @@ def lambda_handler(event, context):
             ),
         }
     elif action == "get_index_info":
-        index_info = get_index_information(api)
+        index_info = get_index_information(event)
         return {
             "statusCode": 200,
             "body": json.dumps(
@@ -138,13 +138,16 @@ def get_current_ma_diff(event, stock_code, buy_price=None):
 
 
 # ////////// 取加權指數&櫃買指數的MACD方向
-def get_index_information(api):
+def get_index_information(event):
+
+    api_key = event["apiKey"]
+    secret_key = event["secretKey"]
+    api = sj.Shioaji(simulation=True)
+    accounts = api.login(api_key, secret_key)
+
     start_day = date.today() - timedelta(days=365)
     end_day = date.today()
-    # api_key = event["apiKey"]
-    # secret_key = event["secretKey"]
-    # api = sj.Shioaji(simulation=True)
-    # accounts = api.login(api_key, secret_key)
+    api = sj.Shioaji(simulation=True)
     tse_index = api.Contracts.Indexs.TSE["001"]
     otc_index = api.Contracts.Indexs.OTC["101"]
 
@@ -171,7 +174,7 @@ def get_index_information(api):
     otc_response_msg = index_macd_notify(otc_macd_df["Hist"])
 
     # 取成值排行漲跌家數
-    amountRankChangeCount = getAmountRankChangeCount(api)
+    amountRankChangeCount = getAmountRankChangeCount(event)
 
     result = {
         "TSE_MACD": tse_response_msg,
@@ -268,7 +271,11 @@ def stock_macd_notify(df):
 
 
 # /////成值排行前100名的漲跌家數
-def getAmountRankChangeCount(api):
+def getAmountRankChangeCount(event):
+    api_key = event["apiKey"]
+    secret_key = event["secretKey"]
+    api = sj.Shioaji(simulation=True)
+    accounts = api.login(api_key, secret_key)
     today = date.today()
     scanners = api.scanners(
         scanner_type=sj.constant.ScannerType.AmountRank, count=100, date=str(today)
