@@ -231,9 +231,11 @@ def index_macd_notify(df):
                 "『綠柱增長』\n 不要看盤了,買了錢會賠光光!會賠光!會很痛苦\n"
             )
             response_message += "禁止買入任何部位,也嚴禁抄底"
+            response_message += "如果持股已經套牢，彈上來是給你停損的"
         else:
             response_message = "『綠柱縮短』\n 可以嘗試做多強勢族群,不上槓桿,嚴守停損\n"
             response_message += "記住這是搶反彈,停損一定要守在成本!"
+            response_message += "如果持股已經套牢，彈上來是給你停損的"
 
     return response_message
 
