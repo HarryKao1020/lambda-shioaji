@@ -37,12 +37,12 @@ def lambda_handler(event, context):
                 {"account_id": accounts[0].account_id, "responseData": ma_diff_data}
             ),
         }
-    elif action == "get_macd_info":
-        macd_info = get_index_macd(event)
+    elif action == "get_index_info":
+        index_info = get_index_information(api)
         return {
             "statusCode": 200,
             "body": json.dumps(
-                {"account_id": accounts[0].account_id, "responseData": macd_info}
+                {"account_id": accounts[0].account_id, "responseData": index_info}
             ),
         }
     elif action == "get_stock_macd":
@@ -138,13 +138,13 @@ def get_current_ma_diff(event, stock_code, buy_price=None):
 
 
 # ////////// 取加權指數&櫃買指數的MACD方向
-def get_index_macd(event):
+def get_index_information(api):
     start_day = date.today() - timedelta(days=365)
     end_day = date.today()
-    api_key = event["apiKey"]
-    secret_key = event["secretKey"]
-    api = sj.Shioaji(simulation=True)
-    accounts = api.login(api_key, secret_key)
+    # api_key = event["apiKey"]
+    # secret_key = event["secretKey"]
+    # api = sj.Shioaji(simulation=True)
+    # accounts = api.login(api_key, secret_key)
     tse_index = api.Contracts.Indexs.TSE["001"]
     otc_index = api.Contracts.Indexs.OTC["101"]
 
@@ -170,7 +170,14 @@ def get_index_macd(event):
     tse_response_msg = index_macd_notify(tse_macd_df["Hist"])
     otc_response_msg = index_macd_notify(otc_macd_df["Hist"])
 
-    result = {"TSE_MACD": tse_response_msg, "OTC_MACD": otc_response_msg}
+    # 取成值排行漲跌家數
+    amountRankChangeCount = getAmountRankChangeCount(api)
+
+    result = {
+        "TSE_MACD": tse_response_msg,
+        "OTC_MACD": otc_response_msg,
+        "AMOUNTRANK_CHANGECOUNT": amountRankChangeCount,
+    }
     return json.dumps(result)
 
 
@@ -258,3 +265,28 @@ def stock_macd_notify(df):
 
 
 # ////////// End 取加權指數&櫃買指數的MACD方向 //////
+
+
+# /////成值排行前100名的漲跌家數
+def getAmountRankChangeCount(api):
+    today = date.today()
+    scanners = api.scanners(
+        scanner_type=sj.constant.ScannerType.AmountRank, count=100, date=str(today)
+    )
+    df = pd.DataFrame(s.__dict__ for s in scanners)
+    df.ts = pd.to_datetime(df.ts)
+    # 取change_type,計算漲停 上漲 下跌 跌停 平盤家數
+    changeTypeDf = df.change_type.value_counts()
+    limitUpAmount = changeTypeDf[1]
+    upAmount = changeTypeDf[2]
+    unChangeAmount = changeTypeDf[3]
+    downAmount = changeTypeDf[4]
+    limitDownAmount = changeTypeDf[5]
+    result = {
+        "limitUpAmount": limitUpAmount,
+        "upAmount": upAmount,
+        "unChangeAmount": unChangeAmount,
+        "downAmount": downAmount,
+        "limitDownAmount": limitDownAmount,
+    }
+    return result
