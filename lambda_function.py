@@ -139,7 +139,6 @@ def get_current_ma_diff(event, stock_code, buy_price=None):
 
 # ////////// 取加權指數&櫃買指數的MACD方向
 def get_index_information(event):
-
     api_key = event["apiKey"]
     secret_key = event["secretKey"]
     api = sj.Shioaji(simulation=True)
@@ -147,7 +146,6 @@ def get_index_information(event):
 
     start_day = date.today() - timedelta(days=365)
     end_day = date.today()
-    api = sj.Shioaji(simulation=True)
     tse_index = api.Contracts.Indexs.TSE["001"]
     otc_index = api.Contracts.Indexs.OTC["101"]
 
@@ -284,11 +282,11 @@ def getAmountRankChangeCount(event):
     df.ts = pd.to_datetime(df.ts)
     # 取change_type,計算漲停 上漲 下跌 跌停 平盤家數
     changeTypeDf = df.change_type.value_counts()
-    limitUpAmount = changeTypeDf[1]
-    upAmount = changeTypeDf[2]
-    unChangeAmount = changeTypeDf[3]
-    downAmount = changeTypeDf[4]
-    limitDownAmount = changeTypeDf[5]
+    limitUpAmount = int(changeTypeDf[1])
+    upAmount = int(changeTypeDf[2])
+    unChangeAmount = int(changeTypeDf[3])
+    downAmount = int(changeTypeDf[4])
+    limitDownAmount = int(changeTypeDf[5])
     result = {
         "limitUpAmount": limitUpAmount,
         "upAmount": upAmount,
