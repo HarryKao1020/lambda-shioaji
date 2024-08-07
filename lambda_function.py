@@ -282,6 +282,11 @@ def getAmountRankChangeCount(event):
     df.ts = pd.to_datetime(df.ts)
     # 取change_type,計算漲停 上漲 下跌 跌停 平盤家數
     changeTypeDf = df.change_type.value_counts()
+    # 如果有漲停或跌停或某一個沒有 就補0
+    for i in range(1, 6):
+        if changeTypeDf.get(i, 0) == 0:
+            changeTypeDf[i] = 0
+
     limitUpAmount = int(changeTypeDf[1])
     upAmount = int(changeTypeDf[2])
     unChangeAmount = int(changeTypeDf[3])
