@@ -6,6 +6,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from datetime import date, timedelta
+import sys
+import os
+
+# 將上一層目錄加入路徑
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import API_KEY, SECRET_KEY
 
 
 def calculate_moving_averages(stock_code, window=60, buy_price=None):
@@ -74,8 +80,8 @@ def get_current_ma_diff(stock_code, buy_price=None):
 if __name__ == "__main__":
     api = sj.Shioaji(simulation=True)
 
-    SHIOAJI_APIKEY = "DP6ayTE7r7zsyWfad4wfu5ZMDdQ4NA6wk1vPESXVihyG"
-    SHIOAJI_SECRETKEY = "65bqwy975DsaDHamDxje8M3yUyqKCEuNRA9szAkrt996"
+    SHIOAJI_APIKEY = API_KEY
+    SHIOAJI_SECRETKEY = SECRET_KEY
     accounts = api.login(SHIOAJI_APIKEY, SHIOAJI_SECRETKEY)
     print(accounts)
 
