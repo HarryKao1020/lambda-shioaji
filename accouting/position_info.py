@@ -114,6 +114,41 @@ def get_futopt_profit_loss(api, start_date, end_date):
 # === End 拉取期權已實現損益 ====
 
 
+# === 銀行餘額 ====
+def get_balance(api):
+    """拉取銀行餘額"""
+    try:
+        balance = api.account_balance()
+        # 轉成 DataFrame
+        balance_df = pd.DataFrame(
+            [
+                {
+                    "狀態": balance.status.value,
+                    "帳戶餘額": balance.acc_balance,
+                    "查詢日期": balance.date,
+                    "錯誤訊息": balance.errmsg,
+                }
+            ]
+        )
+        print(f"帳戶餘額:{balance_df}")
+        return balance.acc_balance
+    except Exception as e:
+        print(f"拉取銀行餘額時發生錯誤: {str(e)}")
+        return None
+
+
+# === Settlements =====
+def get_settlement(api):
+    """拉取交割"""
+    try:
+        settlements = api.settlements(api.stock_account)
+        df = pd.DataFrame([s.__dict__ for s in settlements]).set_index("T")
+        return df
+    except Exception as e:
+        print(f"拉取交割時發生錯誤: {str(e)}")
+        return None
+
+
 # === connect to shioaji ===
 def connect_shioaji():
     """連接到永豐金證券 API 並返回 API 物件"""
@@ -142,12 +177,18 @@ if __name__ == "__main__":
             # print(fuopt_unrealized_pl_df)
 
             # stock已實現
-            stock_pl_df = get_stock_profit_loss(api, "2025-01-01", "2025-03-25")
-            print(stock_pl_df)
+            # stock_pl_df = get_stock_profit_loss(api, "2025-01-01", "2025-03-25")
+            # print(stock_pl_df)
 
             # future/option 已實現
-            futopt_pl_df = get_futopt_profit_loss(api, "2025-02-01", "2025-03-01")
-            print(futopt_pl_df)
+            # futopt_pl_df = get_futopt_profit_loss(api, "2025-02-01", "2025-03-01")
+            # print(futopt_pl_df)
+
+            settlement_df = get_settlement(api)
+            print(settlement_df)
+
+            balance = get_balance(api)
+            print(balance)
 
         finally:
             # 確保即使發生異常，也會登出
