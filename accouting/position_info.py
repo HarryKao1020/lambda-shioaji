@@ -169,6 +169,8 @@ if __name__ == "__main__":
     api = connect_shioaji()
     if api:
         try:
+            print(f"APIKEY:{API_KEY}")
+            print(f"SECRET_KEY:{SECRET_KEY}")
             # # 拉取未實現損益
             # stock_unrealized_pl_df = get_stock_unrealized_profit_loss(api)
             # print(stock_unrealized_pl_df)
