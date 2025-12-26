@@ -1,12 +1,8 @@
 # for aws lambda
-
-
 import shioaji as sj
 import json
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 from datetime import date, timedelta
 
 
@@ -52,6 +48,14 @@ def lambda_handler(event, context):
             "statusCode": 200,
             "body": json.dumps(
                 {"account_id": accounts[0].account_id, "responseData": stock_macd}
+            ),
+        }
+    elif action == "get_account_info":
+        account_info = get_account_info(event)
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                {"account_id": accounts[0].account_id, "responseData": account_info}
             ),
         }
     else:
@@ -300,3 +304,106 @@ def getAmountRankChangeCount(event):
         "limitDownAmount": limitDownAmount,
     }
     return result
+
+
+# 取得帳務資訊
+def get_account_info(event):
+    api_key = event["apiKey"]
+    secret_key = event["secretKey"]
+    api = sj.Shioaji(simulation=False)
+    accounts = api.login(api_key, secret_key)
+    if len(accounts) == 0:
+        return None
+
+    # 取得未實現損益
+    future_positions = api.list_positions(api.futopt_account)
+    future_pos_df = pd.DataFrame(p.__dict__ for p in future_positions)
+
+    # 建立合約代碼對應的資訊
+    def get_contract_info(code):
+        """
+        透過 Shioaji API 查詢合約資訊
+        返回: (合約名稱, 乘數)
+
+        判斷邏輯:
+        1. 先查 Futures
+           - 小型股票期貨: 100股
+           - 一般股票期貨: 2000股
+           - 小型臺指期貨: 50元/點
+           - 微型台指期貨: 10元/點
+        2. 找不到再查 Options
+           - 選擇權: 50元/點
+        """
+        try:
+            # 先嘗試期貨
+            contract = api.Contracts.Futures[code]
+
+            # 判斷是否為台指期貨系列
+            if "小型臺指" in contract.name or "小台指" in contract.name:
+                return contract.name, 50
+            elif "微型台指" in contract.name or "微型臺指" in contract.name:
+                return contract.name, 10
+            # 判斷股票期貨
+            elif "小型" in contract.name:
+                return contract.name, 100
+            else:
+                return contract.name, 2000
+
+        except:
+            try:
+                # 找不到期貨,嘗試選擇權
+                contract = api.Contracts.Options[code]
+                return contract.name, 50  # 選擇權 1點 = 50元
+            except:
+                return "查詢失敗", 2000
+
+    # 新增合約名稱和乘數欄位
+    future_pos_df[["contract_name", "multiplier"]] = future_pos_df["code"].apply(
+        lambda x: pd.Series(get_contract_info(x))
+    )
+
+    # 計算曝險金額
+    future_pos_df["exposure"] = (
+        future_pos_df["price"] * future_pos_df["quantity"] * future_pos_df["multiplier"]
+    )
+
+    # 計算總曝險
+    total_exposure = future_pos_df["exposure"].sum()
+    total_pnl = future_pos_df["pnl"].sum()
+
+    # 組裝每個合約的資訊
+    contract_details = []
+    for _, row in future_pos_df.iterrows():
+        contract_details.append(
+            {
+                "contract_name": row["contract_name"],
+                "quantity": int(row["quantity"]),
+                "price": float(row["price"]),
+                "exposure": float(row["exposure"]),
+                "pnl": float(row["pnl"]),
+            }
+        )
+
+    # 取得保證金資訊來計算槓桿倍數
+    margin_info = api.margin(api.futopt_account)
+
+    result = {
+        "contracts": contract_details,
+        "總曝險金額": f"{total_exposure:,.0f}元",
+        "未實現損益": f"{total_pnl:,.0f}元",
+    }
+
+    if margin_info and hasattr(margin_info, "equity"):
+        equity = margin_info.equity  # 權益數
+        leverage = total_exposure / equity if equity > 0 else 0
+
+        result["權益數"] = f"{equity:,.0f}元"
+        result["槓桿倍數"] = f"{leverage:.2f}x"
+
+        if hasattr(margin_info, "initial_margin"):
+            initial_margin = margin_info.initial_margin
+            margin_usage_rate = (initial_margin / equity * 100) if equity > 0 else 0
+            result["原始保證金"] = f"{initial_margin:,.0f}元"
+            result["保證金使用率"] = f"{margin_usage_rate:.2f}%"
+
+    return json.dumps(result, ensure_ascii=False)
