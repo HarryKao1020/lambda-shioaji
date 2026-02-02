@@ -339,7 +339,9 @@ def get_account_info(event):
             contract = api.Contracts.Futures[code]
 
             # 判斷是否為台指期貨系列
-            if "小型臺指" in contract.name or "小台指" in contract.name:
+            if "大型臺指" in contract.name or "大台指" in contract.name:
+                return contract.name, 200
+            elif "小型臺指" in contract.name or "小台指" in contract.name:
                 return contract.name, 50
             elif "微型台指" in contract.name or "微型臺指" in contract.name:
                 return contract.name, 10
