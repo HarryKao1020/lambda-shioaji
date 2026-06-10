@@ -67,7 +67,7 @@ fi
 
 # 建立 Docker Image
 echo "正在建立 Docker Image..."
-docker build -t ${REPOSITORY_NAME}:${IMAGE_TAG} .
+docker build --platform linux/amd64 -t ${REPOSITORY_NAME}:${IMAGE_TAG} .
 if [ $? -ne 0 ]; then
     echo "錯誤: Docker Image 建立失敗。"
     exit 1

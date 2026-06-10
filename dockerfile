@@ -1,4 +1,10 @@
-FROM public.ecr.aws/lambda/python:3.11
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.11
+
+
+# 建立一個可寫的 home 目錄
+RUN mkdir -p /tmp/home
+ENV HOME=/tmp/home
+
 
 # Copy requirements.txt
 COPY requirements.txt ${LAMBDA_TASK_ROOT}

@@ -1,4 +1,7 @@
 # for aws lambda
+
+import os
+os.environ["HOME"] = "/tmp"  # 必須在 import shioaji 之前
 import shioaji as sj
 import json
 import numpy as np
@@ -71,15 +74,11 @@ def lambda_handler(event, context):
 
 
 def calculate_moving_averages(event, stock_code, window=60, buy_price=None):
-
     api_key = event["apiKey"]
     secret_key = event["secretKey"]
-    # 創建，比如現在時間的前180天
     today = date.today()
     delta = timedelta(days=180)
     date_180 = today - delta
-    # 取得歷史股價資料
-    # k棒的api使用方式
     api = sj.Shioaji(simulation=True)
     accounts = api.login(api_key, secret_key)
     kbars = api.kbars(
@@ -100,7 +99,6 @@ def calculate_moving_averages(event, stock_code, window=60, buy_price=None):
     df["20MA"] = df["Close"].rolling(window=20).mean().round(2)
     df["60MA"] = df["Close"].rolling(window=60).mean().round(2)
     df["20MA/60MA"] = (df["20MA"] / df["60MA"]).round(2)
-    # 計算價格差距百分比
     if buy_price is not None:
         df["5MA_diff"] = ((buy_price - df["5MA"]) / buy_price * 100).round(2)
         df["10MA_diff"] = ((buy_price - df["10MA"]) / buy_price * 100).round(2)
@@ -122,7 +120,6 @@ def calculate_moving_averages(event, stock_code, window=60, buy_price=None):
     ].dropna()
 
 
-# //// 計算ma跟買價的假差
 def get_current_ma_diff(event, stock_code, buy_price=None):
     ma_data = calculate_moving_averages(event, stock_code, buy_price=buy_price)
     current_5ma_diff = ma_data["5MA_diff"].iloc[-1]
@@ -141,7 +138,6 @@ def get_current_ma_diff(event, stock_code, buy_price=None):
     return json.dumps(result)
 
 
-# ////////// 取加權指數&櫃買指數的MACD方向
 def get_index_information(event):
     api_key = event["apiKey"]
     secret_key = event["secretKey"]
@@ -153,9 +149,7 @@ def get_index_information(event):
     tse_index = api.Contracts.Indexs.TSE["001"]
     otc_index = api.Contracts.Indexs.OTC["101"]
 
-    # 取得加權指數資料
     tse_kbars = api.kbars(contract=tse_index, start=str(start_day), end=str(end_day))
-    # 取得櫃買指數資料
     otc_kbars = api.kbars(contract=otc_index, start=str(start_day), end=str(end_day))
 
     tse_df = pd.DataFrame({**tse_kbars})
@@ -165,7 +159,6 @@ def get_index_information(event):
     otc_df.ts = pd.to_datetime(otc_df.ts)
     otc_df.set_index("ts", inplace=True)
 
-    # 日k13:30的K棒
     tse_daily_df = tse_df.resample("D").last().dropna()
     otc_daily_df = otc_df.resample("D").last().dropna()
 
@@ -175,7 +168,6 @@ def get_index_information(event):
     tse_response_msg = index_macd_notify(tse_macd_df["Hist"])
     otc_response_msg = index_macd_notify(otc_macd_df["Hist"])
 
-    # 取成值排行漲跌家數
     amountRankChangeCount = getAmountRankChangeCount(event)
 
     result = {
@@ -186,7 +178,6 @@ def get_index_information(event):
     return json.dumps(result)
 
 
-# 取個股macd方向
 def get_stock_macd(event, stock_code):
     start_day = date.today() - timedelta(days=365)
     end_day = date.today()
@@ -203,7 +194,6 @@ def get_stock_macd(event, stock_code):
     df.ts = pd.to_datetime(df.ts)
     df.set_index("ts", inplace=True)
 
-    # 日k13:30的K棒
     df = df.resample("D").last().dropna()
     stock_macd_df = calculate_macd(df)
     stock_macd_message = stock_macd_notify(stock_macd_df["Hist"])
@@ -211,12 +201,10 @@ def get_stock_macd(event, stock_code):
     return json.dumps(result)
 
 
-# 計算 EMA
 def calculate_ema(df, column, span):
     return df[column].ewm(span=span, adjust=False).mean()
 
 
-# 計算 MACD
 def calculate_macd(df, short_span=12, long_span=26, signal_span=9):
     df["EMA_short"] = calculate_ema(df, "Close", short_span)
     df["EMA_long"] = calculate_ema(df, "Close", long_span)
@@ -226,14 +214,12 @@ def calculate_macd(df, short_span=12, long_span=26, signal_span=9):
     return df
 
 
-# 判斷MACD的趨勢
 def index_macd_notify(df):
     today_hist = df.iloc[-1]
     yesterday_hist = df.iloc[-2]
     if today_hist > 0:
         if today_hist > yesterday_hist:
             response_message = "『紅柱增長』\n 可以積極做多\n"
-
             response_message += "找到主流族群中最好的,打好打滿"
         else:
             response_message = "『紅柱縮短』\n 降低槓桿跟部位,不再買入,庫存留倉觀察"
@@ -269,10 +255,6 @@ def stock_macd_notify(df):
     return response_message
 
 
-# ////////// End 取加權指數&櫃買指數的MACD方向 //////
-
-
-# /////成值排行前100名的漲跌家數
 def getAmountRankChangeCount(event):
     api_key = event["apiKey"]
     secret_key = event["secretKey"]
@@ -284,9 +266,7 @@ def getAmountRankChangeCount(event):
     )
     df = pd.DataFrame(s.__dict__ for s in scanners)
     df.ts = pd.to_datetime(df.ts)
-    # 取change_type,計算漲停 上漲 下跌 跌停 平盤家數
     changeTypeDf = df.change_type.value_counts()
-    # 如果有漲停或跌停或某一個沒有 就補0
     for i in range(1, 6):
         if changeTypeDf.get(i, 0) == 0:
             changeTypeDf[i] = 0
@@ -305,7 +285,9 @@ def getAmountRankChangeCount(event):
     }
     return result
 
-# 取得帳務資訊
+
+
+# 取得帳務資訊（含多空方向分析 + 完整保證金分析）
 def get_account_info(event):
     api_key = event["apiKey"]
     secret_key = event["secretKey"]
@@ -318,15 +300,20 @@ def get_account_info(event):
     future_positions = api.list_positions(api.futopt_account)
     future_pos_df = pd.DataFrame(p.__dict__ for p in future_positions)
 
-    # 沒有任何持倉時直接回傳
-    if future_pos_df.empty:
-        return json.dumps({"message": "目前無任何期貨持倉"}, ensure_ascii=False)
-
     # 建立合約代碼對應的資訊
     def get_contract_info(code):
         """
         透過 Shioaji API 查詢合約資訊
         返回: (合約名稱, 乘數)
+
+        判斷邏輯:
+        1. 先查 Futures
+           - 小型股票期貨: 100股
+           - 一般股票期貨: 2000股
+           - 小型臺指期貨: 50元/點
+           - 微型台指期貨: 10元/點
+        2. 找不到再查 Options
+           - 選擇權: 50元/點
         """
         try:
             contract = api.Contracts.Futures[code]
@@ -376,9 +363,8 @@ def get_account_info(event):
     short_exposure = future_pos_df.loc[
         future_pos_df["direction_label"] == "空", "exposure"
     ].sum()
-
-    total_exposure = future_pos_df["exposure"].sum()       # 總曝險(絕對值加總)
-    net_exposure = long_exposure - short_exposure          # 淨曝險(方向性風險)
+    total_exposure = future_pos_df["exposure"].sum()        # 總曝險(絕對值加總)
+    net_exposure = long_exposure - short_exposure           # 淨曝險(方向性風險)
     total_pnl = future_pos_df["pnl"].sum()
 
     # 多空比率 (以曝險金額計算)
@@ -389,22 +375,22 @@ def get_account_info(event):
     else:
         long_short_ratio = "無部位"
 
-    # 組裝每個合約的資訊 (新增 direction)
+    # 組裝每個合約的資訊
     contract_details = []
     for _, row in future_pos_df.iterrows():
         contract_details.append(
             {
                 "contract_name": row["contract_name"],
-                "direction": row["direction_label"],   # 多 or 空
+                "direction": row["direction_label"],    # 多 or 空
                 "quantity": int(row["quantity"]),
-                "price": float(row["price"]), # 成本均價
+                "price": float(row["price"]),           # 成本均價
                 "last_price": float(row["last_price"]), # 目前市價
                 "exposure": float(row["exposure"]),
                 "pnl": float(row["pnl"]),
             }
         )
 
-    # 取得保證金資訊來計算槓桿倍數
+    # 取得保證金資訊
     margin_info = api.margin(api.futopt_account)
 
     result = {
@@ -418,121 +404,51 @@ def get_account_info(event):
     }
 
     if margin_info and hasattr(margin_info, "equity"):
-        equity = margin_info.equity  # 權益數
+        equity             = margin_info.equity
+        initial_margin     = margin_info.initial_margin
+        maintenance_margin = margin_info.maintenance_margin
+        margin_call        = margin_info.margin_call
+        risk_indicator     = margin_info.risk_indicator     # 官方算好：equity / initial_margin * 100
+        available_margin   = margin_info.available_margin
+
+        # 槓桿倍數（總曝險 / 權益）
         leverage = total_exposure / equity if equity > 0 else 0
 
-        result["權益數"] = f"{equity:,.0f}元"
-        result["槓桿倍數"] = f"{leverage:.2f}x"
+        # 維持率（equity / maintenance_margin * 100）
+        # 低於 100% 代表低於維持保證金，會收到追繳通知
+        if maintenance_margin > 0:
+            margin_maintenance_rate = equity / maintenance_margin * 100
+            margin_buffer = equity - maintenance_margin     # 距離追繳還有多少緩衝
+        else:
+            # 無部位時 maintenance_margin = 0，避免除以零
+            margin_maintenance_rate = 999.0
+            margin_buffer = equity
 
-        if hasattr(margin_info, "initial_margin"):
-            initial_margin = margin_info.initial_margin
-            margin_usage_rate = (initial_margin / equity * 100) if equity > 0 else 0
-            result["原始保證金"] = f"{initial_margin:,.0f}元"
-            result["保證金使用率"] = f"{margin_usage_rate:.2f}%"
+        result["權益數"]      = f"{equity:,.0f}元"
+        result["原始保證金"]  = f"{initial_margin:,.0f}元"
+        result["維持保證金"]  = f"{maintenance_margin:,.0f}元"
+        result["追繳保證金"]  = f"{margin_call:,.0f}元"
+        result["可動用保證金"] = f"{available_margin:,.0f}元"
+        result["槓桿倍數"]    = f"{leverage:.2f}x"
+
+        # 風險指標：官方提供，equity / initial_margin * 100
+        # 999 代表無部位（無限大）
+        result["風險指標"] = (
+            f"{risk_indicator:.1f}%"
+            if risk_indicator != 999
+            else "無部位"
+        )
+
+        # 維持率：equity / maintenance_margin * 100
+        # 低於 100% → 追繳警告
+        result["維持率"] = (
+            f"{margin_maintenance_rate:.1f}%"
+            if maintenance_margin > 0
+            else "無部位"
+        )
+
+        # 距追繳緩衝：equity - maintenance_margin
+        # 負數代表已低於維持保證金，必須立即補繳
+        result["距追繳緩衝"] = f"{margin_buffer:,.0f}元"
 
     return json.dumps(result, ensure_ascii=False)
-
-
-# # 取得帳務資訊
-# def get_account_info(event):
-#     api_key = event["apiKey"]
-#     secret_key = event["secretKey"]
-#     api = sj.Shioaji(simulation=False)
-#     accounts = api.login(api_key, secret_key)
-#     if len(accounts) == 0:
-#         return None
-
-#     # 取得未實現損益
-#     future_positions = api.list_positions(api.futopt_account)
-#     future_pos_df = pd.DataFrame(p.__dict__ for p in future_positions)
-
-#     # 建立合約代碼對應的資訊
-#     def get_contract_info(code):
-#         """
-#         透過 Shioaji API 查詢合約資訊
-#         返回: (合約名稱, 乘數)
-
-#         判斷邏輯:
-#         1. 先查 Futures
-#            - 小型股票期貨: 100股
-#            - 一般股票期貨: 2000股
-#            - 小型臺指期貨: 50元/點
-#            - 微型台指期貨: 10元/點
-#         2. 找不到再查 Options
-#            - 選擇權: 50元/點
-#         """
-#         try:
-#             # 先嘗試期貨
-#             contract = api.Contracts.Futures[code]
-
-#             # 判斷是否為台指期貨系列
-#             if "臺股期貨" in contract.name or "大台指" in contract.name:
-#                 return contract.name, 200
-#             elif "小型臺指" in contract.name or "小台指" in contract.name:
-#                 return contract.name, 50
-#             elif "微型台指" in contract.name or "微型臺指" in contract.name:
-#                 return contract.name, 10
-#             # 判斷股票期貨
-#             elif "小型" in contract.name:
-#                 return contract.name, 100
-#             else:
-#                 return contract.name, 2000
-
-#         except:
-#             try:
-#                 # 找不到期貨,嘗試選擇權
-#                 contract = api.Contracts.Options[code]
-#                 return contract.name, 50  # 選擇權 1點 = 50元
-#             except:
-#                 return "查詢失敗", 2000
-
-#     # 新增合約名稱和乘數欄位
-#     future_pos_df[["contract_name", "multiplier"]] = future_pos_df["code"].apply(
-#         lambda x: pd.Series(get_contract_info(x))
-#     )
-
-#     # 計算曝險金額
-#     future_pos_df["exposure"] = (
-#         future_pos_df["price"] * future_pos_df["quantity"] * future_pos_df["multiplier"]
-#     )
-
-#     # 計算總曝險
-#     total_exposure = future_pos_df["exposure"].sum()
-#     total_pnl = future_pos_df["pnl"].sum()
-
-#     # 組裝每個合約的資訊
-#     contract_details = []
-#     for _, row in future_pos_df.iterrows():
-#         contract_details.append(
-#             {
-#                 "contract_name": row["contract_name"],
-#                 "quantity": int(row["quantity"]),
-#                 "price": float(row["price"]),
-#                 "exposure": float(row["exposure"]),
-#                 "pnl": float(row["pnl"]),
-#             }
-#         )
-
-#     # 取得保證金資訊來計算槓桿倍數
-#     margin_info = api.margin(api.futopt_account)
-
-#     result = {
-#         "contracts": contract_details,
-#         "總曝險金額": f"{total_exposure:,.0f}元",
-#         "未實現損益": f"{total_pnl:,.0f}元",
-#     }
-
-#     if margin_info and hasattr(margin_info, "equity"):
-#         equity = margin_info.equity  # 權益數
-#         leverage = total_exposure / equity if equity > 0 else 0
-
-#         result["權益數"] = f"{equity:,.0f}元"
-#         result["槓桿倍數"] = f"{leverage:.2f}x"
-
-#         if hasattr(margin_info, "initial_margin"):
-#             initial_margin = margin_info.initial_margin
-#             margin_usage_rate = (initial_margin / equity * 100) if equity > 0 else 0
-#             result["原始保證金"] = f"{initial_margin:,.0f}元"
-#             result["保證金使用率"] = f"{margin_usage_rate:.2f}%"
-
-#     return json.dumps(result, ensure_ascii=False)
